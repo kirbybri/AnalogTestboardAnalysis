@@ -119,7 +119,8 @@ def processFile(hdf5File):
 
   #extract run # from file name
   print( hdf5File.filename )
-  nameSplit = hdf5File.filename.split('_')
+  pathSplit = hdf5File.filename.split('/')
+  nameSplit = pathSplit[-1].split('_')
   if len(nameSplit) < 2 :
     return
   if nameSplit[0] != 'Run' :
