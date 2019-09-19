@@ -2,25 +2,16 @@ import h5py
 import numpy as np
 from math import *
 import matplotlib.pyplot as plt
-import argparse
-import glob
-from scipy import stats
-#from helperfunctions import *
-import pickle
-#from itertools import product
-#from collections import defaultdict
 import json
 import sys
 
-def plot_wf(wf_data,a=0,b=1000):
-   # plot waveform samples
-   plt.plot(wf_data[a:b],'.-')
-   #plt.plot(wf_data,'.-')
+# plot waveform samples
+def plot_wf(wf_data,a=0,b=1000):   
+   plt.plot(wf_data[a:b],'.-') #plt.plot(wf_data,'.-')
    plt.xlabel('samples', horizontalalignment='right', x=1.0)
    plt.ylabel('ADC counts')
    plt.title("Example Waveform")
-   plt.show()
-   #plt.clf()
+   plt.show() #plt.clf()
 
 #interlace code from testhdf5_elena.py
 def interlace(block_length, pulse_length, samples):
@@ -30,10 +21,10 @@ def interlace(block_length, pulse_length, samples):
   new_samples[block_length-1] = samples[block_length-1]
   return new_samples
 
+#analysis process applied to each "measurement"
 def processMeasurement(file_key, meas):
   print( "Measurement","\t",file_key)
-  #print( "Measurement keys","\t", meas.keys() ) #group keys
-  #print( "Measurement attr keys","\t", meas.attrs.keys() ) #group key
+  #check for required attributes
   if 'awg_freq' not in meas.attrs :
     print("HDF5 group is missing required metadata: awg_freq")
     return None
@@ -46,11 +37,9 @@ def processMeasurement(file_key, meas):
   if 'run_type' not in meas.attrs :
     print("HDF5 group is missing required metadata: run_type")
     return None
-
   #ignore misconfigured runs
   if meas.attrs['run_type'] == 'sine' :
     return None
-
   #get required attributes
   adc_freq = 40
   awg_freq = meas.attrs["awg_freq"]
@@ -63,22 +52,15 @@ def processMeasurement(file_key, meas):
   resultsList = []
   for group_key in meas.keys() :
     mysubgroup = meas[group_key] #group object
-    #print("\t", "Group","\t", group_key )
-    #print("\t", "Group keys""\t",mysubgroup.keys() )
-    #print("\t", "Group attr keys","\t",mysubgroup.attrs.keys() )
     for subgroup_key in mysubgroup.keys() :
         mysubsubgroup = mysubgroup[subgroup_key] #group object
-        #print("\t\t", "Subgroup","\t", subgroup_key)
-        #print("\t\t", "Subgroup keys","\t",mysubsubgroup.keys() )
-        #print("\t\t", "Subgroup attr keys","\t",mysubsubgroup.attrs.keys() )
+        #check if there is a waveform object
         if 'samples' in mysubsubgroup :
-          #print( mysubsubgroup['samples'] )
           myds = mysubsubgroup['samples'] #dataset object
-          #print("\t\t\t", file_key, "\t", group_key, "\t", subgroup_key, "\t", pulser_amp )
-
+          #require minimum # samples in waveform data
           if myds.len() < 4000 :
             continue
-
+          #get initial pulse measurements
           pedVal = np.mean(myds[0:50])
           pedRms = np.std(myds[0:50])
           maxVal = int(np.amax(myds[50:75]))
@@ -87,14 +69,13 @@ def processMeasurement(file_key, meas):
           if maxVal - pedVal < 25 :
             continue
           
-          #for samp in range(0, myds.len() ):
-          #  print(samp,"\t",myds[samp])
+          #do interlacing, get refined pulse measurements
           #intWf = interlace(block_length, pulse_length, myds)
           #pedVal = np.mean(intWf[0:400])
           #pedRms = np.std(intWf[0:400])
           #maxVal = np.amax(intWf[400:500])
           
-          #store results
+          #store results in dict
           resultsDict = {}
           resultsDict['coluta'] = group_key
           resultsDict['channel'] = subgroup_key
@@ -102,30 +83,31 @@ def processMeasurement(file_key, meas):
           resultsDict['ped'] = pedVal
           resultsDict['rms'] = pedRms
           resultsDict['max'] = maxVal
-          #print( resultsDict )
           resultsList.append( resultsDict )
-          #print( "\t", pedVal ,"\t", pedRms,"\t", maxVal)
-          #plot_wf(myds,0,200)
-          #plot_wf(intWf)
-
+          #plot_wf(myds,0,200) #plot_wf(intWf)
+          
   #if len(resultsList) == 0 :
   #  return None
   return resultsList
-    
+
+#extract run # from file name
+def getRunNo(fileName):
+  pathSplit = fileName.split('/')
+  nameSplit = pathSplit[-1].split('_')
+  if len(nameSplit) < 2 :
+    return None
+  if nameSplit[0] != 'Run' :
+    return None
+  return nameSplit[1]
+
+#run analysis on input file
 def processFile(hdf5File):
   #check for required attributes
   #print( "FILE Keys ", "\t", hdf5File.keys() )
   #print( "FILE attr Keys ", "\t", hdf5File.attrs.keys() )
-
-  #extract run # from file name
-  print( hdf5File.filename )
-  pathSplit = hdf5File.filename.split('/')
-  nameSplit = pathSplit[-1].split('_')
-  if len(nameSplit) < 2 :
-    return
-  if nameSplit[0] != 'Run' :
-    return
-  runNo = nameSplit[1]
+  runNo = getRunNo( hdf5File.filename )
+  if runNo == None :
+    print("ERROR: couldn't get run number")
 
   #get board serial #
   serialNo = None
@@ -137,33 +119,34 @@ def processFile(hdf5File):
   runResultsDict['run'] = runNo
   runResultsDict['serial'] = serialNo
 
-  #loop through measurements
+  #loop through measurements, store results in dict
   measResultsDict = {}
   for file_key in hdf5File.keys() :
-    #print( file_key ) #file object key
-    meas = hdf5File[file_key] #group object
-    measResults = processMeasurement(file_key, meas)
+    measResults = processMeasurement(file_key, hdf5File[file_key] )
     if measResults != None :
       measResultsDict[file_key] = measResults
-
+  
   runResultsDict['results'] = measResultsDict
-  #print("RESULTS")
-  #print( runResultsDict )
+  return runResultsDict
 
-  jsonFileName = 'results_' + runNo + '.json'
+#output results dict to json file
+def outputFile(runResultsDict,fileName):
+  pathSplit = fileName.split('/')[-1]
+  jsonFileName = 'output_runAnalysis_' + pathSplit + '.json'
   with open( jsonFileName , 'w') as outfile:
     json.dump( runResultsDict, outfile, indent=4)
 
 def main():
   print("HELLO")
-
   if len(sys.argv) != 2 :
     print("ERROR, program requires filename as argument")
     return
 
   fileName = sys.argv[1]
   hdf5File = h5py.File(fileName, "r") #file object
-  processFile(hdf5File)
+  runResultsDict = processFile(hdf5File)
+  if runResultsDict != None:
+    outputFile(runResultsDict, fileName)
   return
 
 #-------------------------------------------------------------------------
