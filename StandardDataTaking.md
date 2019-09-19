@@ -21,7 +21,8 @@ In GUI “Control” tab, press “Trigger and Take Samples” button and make s
 
 Pedestal runs
 -------------
-Power off board and disconnect jumper from channel inputs
+Power off board and disconnect jumper shown below to disconnect pulser signal.
+![atb_internalPulserJumper](atb_internalPulserJumper.png) 
 
 -ensure # of samples is suitably large (4093?)
 -press pedestal buttong
