@@ -21,19 +21,25 @@ In GUI “Control” tab, press “Trigger and Take Samples” button and make s
 
 Pedestal runs
 -------------
-Power off board and disconnect jumper shown below to disconnect pulser signal.
+Power off board and remove jumper shown below to disconnect pulser signal.
 ![atb_internalPulserJumper](atb_internalPulserJumper.png) 
 
--ensure # of samples is suitably large (4093?)
--press pedestal buttong
--hit take samples
--close GUI
+Ensure number of readout samples specified in GUI is suitably large (4093)
+
+In GUI "Intrumentation" tab, press "Initalize" button. Then press "Pedestal" button.
+
+In GUI "Control" tab, press "Take Repeat" to record pedestal data.
+
+In GUI "COLUTA1" tab, check or uncheck Gain box for 1x or 4x COLUTA DRE mode.
+
+Note the run number and close the GUI.
 
 Pulser runs
--connect jumper to appropriate channel input
--ensure # of samples is suitably large (4093?)
+-----------
+Power off board and place jumper shown previously to connect pulser signal.
 
-LAUROC1 Ch1 pulsed
-LAUROC2 Ch2 pulsed
-1x pedestal
-4x pedestal 
+Ensure number of readout samples specified in GUI is suitably large (4093).
+
+In GUI "Trigger" tab, press “Select Calibration Pulses” button ONCE.
+
+In GUI "Control" tab, press "Take Standard Set of Runs" to record internal pulser data.
