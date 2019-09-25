@@ -12,6 +12,8 @@ class ATB_PROCESS_FILE(object):
   def __init__(self,fileName=None):
     self.fileName = fileName
     self.runResultsDict = None
+    self.doInterlace = True
+    self.doPlot = False
 
   # plot waveform samples
   def plot_wf(self,wf_data,a=0,b=1000):   
@@ -29,21 +31,52 @@ class ATB_PROCESS_FILE(object):
     new_samples[block_length-1] = samples[block_length-1]
     return new_samples
 
+  #process waveform
+  def processWaveform(self,samples, colutaNum, channelNum, pulserAmp, block_length, pulse_length):
+    if len(samples) < 4000 :
+      return None
+    #get initial pulse measurements
+    pedVal = np.mean(samples[0:50])
+    pedRms = np.std(samples[0:50])
+    maxVal = int(np.amax(samples[50:75]))
+    #skip waveforms with no pulses
+    if maxVal - pedVal < 25 :
+      return None
+
+    #do interlacing, get refined pulse measurements
+    if self.doInterlace :
+      intWf = self.interlace(block_length, pulse_length, samples)
+      pedVal = np.mean(intWf[0:400])
+      pedRms = np.std(intWf[0:400])
+      maxVal = np.amax(intWf[400:500])
+
+    #store results in dict
+    resultsDict = {}
+    resultsDict['coluta'] = colutaNum
+    resultsDict['channel'] = channelNum
+    resultsDict['pulser'] = pulserAmp
+    resultsDict['ped'] = pedVal
+    resultsDict['rms'] = pedRms
+    resultsDict['max'] = maxVal
+    if self.doPlot :
+      self.plot_wf(intWf) #self.plot_wf(samples,0,200)
+    return resultsDict
+
   #analysis process applied to each "measurement"
   def processMeasurement(self,file_key, meas):
     print( "Measurement","\t",file_key)
     #check for required attributes
     if 'awg_freq' not in meas.attrs :
-      print("HDF5 group is missing required metadata: awg_freq")
+      print("Measurement is missing required metadata: awg_freq")
       return None
     if 'pulse_length' not in meas.attrs :
-      print("HDF5 group is missing required metadata: pulse_length")
+      print("Measurement is missing required metadata: pulse_length")
       return None
     if 'pulser_amp' not in meas.attrs :
-      print("HDF5 group is missing required metadata: pulser_amp")
+      print("Measurement is missing required metadata: pulser_amp")
       return None
     if 'run_type' not in meas.attrs :
-      print("HDF5 group is missing required metadata: run_type")
+      print("Measurement is missing required metadata: run_type")
       return None
     #ignore misconfigured runs
     if meas.attrs['run_type'] == 'sine' :
@@ -56,46 +89,28 @@ class ATB_PROCESS_FILE(object):
     n_offset = 1
     block_length = int(((awg_freq/np.abs(n_offset))/adc_freq)*pulse_length)
 
-    #loop over measurement group members, store result dicts in a list
+    #loop over measurement group members, process waveform data
     resultsList = []
     for group_key in meas.keys() :
       mysubgroup = meas[group_key] #group object
       for subgroup_key in mysubgroup.keys() :
         mysubsubgroup = mysubgroup[subgroup_key] #group object
-        #check if there is a waveform object
-        if 'samples' in mysubsubgroup :
-          myds = mysubsubgroup['samples'] #dataset object
-          #require minimum # samples in waveform data
-          if myds.len() < 4000 :
-            continue
-          #get initial pulse measurements
-          pedVal = np.mean(myds[0:50])
-          pedRms = np.std(myds[0:50])
-          maxVal = int(np.amax(myds[50:75]))
-
-          #skip waveforms with no pulses
-          if maxVal - pedVal < 25 :
-            continue
-          
-          #do interlacing, get refined pulse measurements
-          intWf = self.interlace(block_length, pulse_length, myds)
-          pedVal = np.mean(intWf[0:400])
-          pedRms = np.std(intWf[0:400])
-          maxVal = np.amax(intWf[400:500])
-          
-          #store results in dict
-          resultsDict = {}
-          resultsDict['coluta'] = group_key
-          resultsDict['channel'] = subgroup_key
-          resultsDict['pulser'] = pulser_amp
-          resultsDict['ped'] = pedVal
-          resultsDict['rms'] = pedRms
-          resultsDict['max'] = maxVal
+        if 'SAR_weights' not in mysubsubgroup.attrs :
+          print("Channel is missing required metadata: SAR_weights")
+          continue
+        #if 'samples' not in mysubsubgroup :
+        #  print("Channel is missing required dataset: samples")
+        #  continue
+        #samples = mysubsubgroup['samples']
+        if 'raw_data' not in mysubsubgroup :
+          print("Channel is missing required dataset: raw_data")
+          continue
+        sarWeights = mysubsubgroup.attrs['SAR_weights']
+        raw_data = mysubsubgroup['raw_data'] #dataset object
+        samples = np.dot(raw_data, sarWeights)
+        resultsDict = self.processWaveform(samples,group_key,subgroup_key,pulser_amp,block_length, pulse_length)
+        if resultsDict != None :
           resultsList.append( resultsDict )
-          self.plot_wf(intWf) #self.plot_wf(myds,0,200)
-          
-    #if len(resultsList) == 0 :
-    #  return None
     return resultsList
 
   #extract run # from file name

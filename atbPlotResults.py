@@ -11,6 +11,7 @@ class ATB_PLOT_RESULTS(object):
   def __init__(self,fileName=None,boardName=None):
     self.fileName = fileName
     self.boardName = boardName
+    self.runResults = None
 
   #reorganize measurement data by ASIC, ch and pulser DAC
   def collect(self, runResults):
@@ -93,19 +94,22 @@ class ATB_PLOT_RESULTS(object):
     plt.savefig(figureName)
     plt.show() #plt.clf()
 
-  def processFile(self):
+  def processResults(self):
+    if self.runResults == None :
+      return None
     fileName = self.fileName
     boardName= self.boardName
-    #open list of measurements, get all results
-    with open(fileName) as json_data:
-      runResults = json.load(json_data)
-
-    boardMeas = self.collect( runResults )
+    boardMeas = self.collect( self.runResults )
     boardResult = self.calcAvg( boardMeas )
     self.makePlots(boardResult,('coluta1', 'channel1'),boardName + " COLUTA 1 Low Gain",boardName+"_coluta1_lg",0,70000)
     self.makePlots(boardResult,('coluta1', 'channel2'),boardName + " COLUTA 1 High Gain",boardName+"_coluta1_hg",0,5000)
     self.makePlots(boardResult,('coluta2', 'channel1'),boardName + " COLUTA 2 High Gain",boardName+"_coluta2_hg",0,5000)
     self.makePlots(boardResult,('coluta2', 'channel2'),boardName + " COLUTA 2 Low Gain",boardName+"_coluta2_lg",0,70000)
+
+  def processFile(self):
+    #open list of measurements, get all results
+    with open(self.fileName) as json_data:
+      self.runResults = json.load(json_data)
 
 def main():
   if len(sys.argv) != 3 :
@@ -119,6 +123,7 @@ def main():
   atbPlotResults.fileName = fileName
   atbPlotResults.boardName = boardName
   atbPlotResults.processFile()
+  atbPlotResults.processResults()
 
 #-------------------------------------------------------------------------
 if __name__ == "__main__":
