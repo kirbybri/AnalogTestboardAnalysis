@@ -11,9 +11,14 @@ class ATB_PROCESS_FILE(object):
   #__INIT__#
   def __init__(self,fileName=None):
     self.fileName = fileName
+    self.hdf5File = None
     self.runResultsDict = None
     self.doInterlace = True
     self.doPlot = False
+    self.SAR_weights_coluta1_ch1 = None
+    self.SAR_weights_coluta2_ch2 = None
+    self.SAR_weights_coluta1_ch1 = None
+    self.SAR_weights_coluta2_ch2 = None
 
   # plot waveform samples
   def plot_wf(self,wf_data,a=0,b=1000):   
@@ -89,15 +94,21 @@ class ATB_PROCESS_FILE(object):
     n_offset = 1
     block_length = int(((awg_freq/np.abs(n_offset))/adc_freq)*pulse_length)
 
+    #if 'SAR_weights' not in mysubsubgroup.attrs :
+      #print("Channel is missing required metadata: SAR_weights")
+      #continue
+
     #loop over measurement group members, process waveform data
     resultsList = []
     for group_key in meas.keys() :
       mysubgroup = meas[group_key] #group object
       for subgroup_key in mysubgroup.keys() :
         mysubsubgroup = mysubgroup[subgroup_key] #group object
-        if 'SAR_weights' not in mysubsubgroup.attrs :
-          print("Channel is missing required metadata: SAR_weights")
-          continue
+        colutaNum = group_key
+        channelNum = subgroup_key
+        #if 'SAR_weights' not in mysubsubgroup.attrs :
+        #  print("Channel is missing required metadata: SAR_weights")
+        #  continue
         #if 'samples' not in mysubsubgroup :
         #  print("Channel is missing required dataset: samples")
         #  continue
@@ -105,10 +116,18 @@ class ATB_PROCESS_FILE(object):
         if 'raw_data' not in mysubsubgroup :
           print("Channel is missing required dataset: raw_data")
           continue
-        sarWeights = mysubsubgroup.attrs['SAR_weights']
+        sarWeights = None
+        if colutaNum == 'coluta1' and channelNum == 'channel1' :
+          sarWeights = self.SAR_weights_coluta1_ch1
+        if colutaNum == 'coluta1' and channelNum == 'channel2' :
+          sarWeights = self.SAR_weights_coluta1_ch2
+        if colutaNum == 'coluta2' and channelNum == 'channel1' :
+          sarWeights = self.SAR_weights_coluta2_ch1
+        if colutaNum == 'coluta2' and channelNum == 'channel2' :
+          sarWeights = self.SAR_weights_coluta2_ch2
         raw_data = mysubsubgroup['raw_data'] #dataset object
         samples = np.dot(raw_data, sarWeights)
-        resultsDict = self.processWaveform(samples,group_key,subgroup_key,pulser_amp,block_length, pulse_length)
+        resultsDict = self.processWaveform(samples,colutaNum,channelNum,pulser_amp,block_length, pulse_length)
         if resultsDict != None :
           resultsList.append( resultsDict )
     return resultsList
@@ -127,28 +146,44 @@ class ATB_PROCESS_FILE(object):
   def processFile(self):
     if self.fileName == None:
       return None
-    hdf5File = h5py.File(self.fileName, "r") #file object
+    self.hdf5File = h5py.File(self.fileName, "r") #file object
     #check for required attributes
     #print( "FILE Keys ", "\t", hdf5File.keys() )
-    #print( "FILE attr Keys ", "\t", hdf5File.attrs.keys() )
-    runNo = self.getRunNo( hdf5File.filename )
+    print( "FILE attr Keys ", "\t", self.hdf5File.attrs.keys() )
+    runNo = self.getRunNo( self.hdf5File.filename )
     if runNo == None :
       print("ERROR: couldn't get run number")
-
     #get board serial #
     serialNo = None
-    if 'serial_number' in hdf5File.attrs :
-      serialNo = hdf5File.attrs['serial_number']
+    if 'serial_number' in self.hdf5File.attrs :
+      serialNo = self.hdf5File.attrs['serial_number']
+    #get SAR weights
+    if 'coluta1_channel1_SAR_weights' not in self.hdf5File.attrs :
+      print("HDF5 file missing attribute: coluta1_channel1_SAR_weights")
+      return None
+    if 'coluta1_channel2_SAR_weights' not in self.hdf5File.attrs :
+      print("HDF5 file missing attribute: coluta1_channel2_SAR_weights")
+      return None
+    if 'coluta2_channel1_SAR_weights' not in self.hdf5File.attrs :
+      print("HDF5 file missing attribute: coluta2_channel1_SAR_weights")
+      return None
+    if 'coluta2_channel2_SAR_weights' not in self.hdf5File.attrs :
+      print("HDF5 file missing attribute: coluta2_channel2_SAR_weights")
+      return None
+    self.SAR_weights_coluta1_ch1 = self.hdf5File.attrs['coluta1_channel1_SAR_weights']
+    self.SAR_weights_coluta1_ch2 = self.hdf5File.attrs['coluta1_channel2_SAR_weights']
+    self.SAR_weights_coluta2_ch1 = self.hdf5File.attrs['coluta2_channel1_SAR_weights']
+    self.SAR_weights_coluta2_ch2 = self.hdf5File.attrs['coluta2_channel2_SAR_weights']
 
     self.runResultsDict = {}
-    self.runResultsDict['file'] = hdf5File.filename
+    self.runResultsDict['file'] = self.hdf5File.filename
     self.runResultsDict['run'] = runNo
     self.runResultsDict['serial'] = serialNo
 
     #loop through measurements, store results in dict
     measResultsDict = {}
-    for file_key in hdf5File.keys() :
-      measResults = self.processMeasurement(file_key, hdf5File[file_key] )
+    for file_key in self.hdf5File.keys() :
+      measResults = self.processMeasurement(file_key, self.hdf5File[file_key] )
       if measResults != None :
         measResultsDict[file_key] = measResults
   

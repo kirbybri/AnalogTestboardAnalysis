@@ -86,13 +86,19 @@ class ATB_PLOT_RESULTS(object):
       maxs.append(chResult[amp]['max'])
       peaks.append( chResult[amp]['max'] - chResult[amp]['ped'])
 
+    #fig = plt.figure()
+    #ax = fig.add_axes()
     plt.plot(amps, peaks,'.')
     plt.xlim(low,high)
     plt.xlabel('Pulser DAC [DAC code]', horizontalalignment='right', x=1.0)
     plt.ylabel('Pulse Height [ADC counts]')
     plt.title(titleTextBase + " : Pulse Height count vs Pulser DAC")
-    plt.savefig(figureName)
+    #plt.savefig(figureName)
     plt.show() #plt.clf()
+    return None
+
+  def showPlots(self):
+    plt.show()
 
   def processResults(self):
     if self.runResults == None :
@@ -101,6 +107,7 @@ class ATB_PLOT_RESULTS(object):
     boardName= self.boardName
     boardMeas = self.collect( self.runResults )
     boardResult = self.calcAvg( boardMeas )
+
     self.makePlots(boardResult,('coluta1', 'channel1'),boardName + " COLUTA 1 Low Gain",boardName+"_coluta1_lg",0,70000)
     self.makePlots(boardResult,('coluta1', 'channel2'),boardName + " COLUTA 1 High Gain",boardName+"_coluta1_hg",0,5000)
     self.makePlots(boardResult,('coluta2', 'channel1'),boardName + " COLUTA 2 High Gain",boardName+"_coluta2_hg",0,5000)
@@ -112,12 +119,14 @@ class ATB_PLOT_RESULTS(object):
       self.runResults = json.load(json_data)
 
 def main():
-  if len(sys.argv) != 3 :
+  if len(sys.argv) < 2 :
     print("ERROR, program requires filename as argument")
     return
 
   fileName = sys.argv[1]
-  boardName = sys.argv[2]
+  boardName = "Board "
+  if len(sys.argv) == 3 :
+    boardName = sys.argv[2]
 
   atbPlotResults = ATB_PLOT_RESULTS(fileName)
   atbPlotResults.fileName = fileName
