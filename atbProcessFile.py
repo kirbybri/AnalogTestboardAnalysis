@@ -19,10 +19,12 @@ class ATB_PROCESS_FILE(object):
     self.SAR_weights_coluta2_ch2 = None
     self.SAR_weights_coluta1_ch1 = None
     self.SAR_weights_coluta2_ch2 = None
+    self.pedRange = [0,400]
+    self.peakRange = [400,500]
 
   # plot waveform samples
   def plot_wf(self,wf_data,a=0,b=1000):   
-    plt.plot(wf_data[a:b],'.-') #plt.plot(wf_data,'.-')
+    plt.plot(wf_data[a:b],'.-')#plt.plot(wf_data,'.-')#
     plt.xlabel('samples', horizontalalignment='right', x=1.0)
     plt.ylabel('ADC counts')
     plt.title("Example Waveform")
@@ -37,7 +39,7 @@ class ATB_PROCESS_FILE(object):
     return new_samples
 
   #process waveform
-  def processWaveform(self,samples, colutaNum, channelNum, pulserAmp, block_length, pulse_length):
+  def processWaveform(self,samples, colutaNum, channelNum, pulserAmp, block_length, pulse_length, n_pulse_skips='0'):
     if len(samples) < 4000 :
       return None
     #get initial pulse measurements
@@ -50,10 +52,14 @@ class ATB_PROCESS_FILE(object):
 
     #do interlacing, get refined pulse measurements
     if self.doInterlace :
-      intWf = self.interlace(block_length, pulse_length, samples)
-      pedVal = np.mean(intWf[0:400])
-      pedRms = np.std(intWf[0:400])
-      maxVal = np.amax(intWf[400:500])
+      samples = samples[n_pulse_skips*pulse_length :]
+      samples = self.interlace(block_length, pulse_length, samples)
+      #pedVal = np.mean( samples[pedRange[0]:pedRange[1]] )
+      #pedRms = np.std( samples[pedRange[0]:pedRange[1]] )
+      #maxVal = np.amax( samples[peakRange[0]:peakRange[1]] )
+      pedVal = np.mean(samples[0:100])
+      pedRms = np.std(samples[0:100])
+      maxVal = np.amax(samples[125:300])
 
     #store results in dict
     resultsDict = {}
@@ -63,13 +69,18 @@ class ATB_PROCESS_FILE(object):
     resultsDict['ped'] = pedVal
     resultsDict['rms'] = pedRms
     resultsDict['max'] = maxVal
+    #resultsDict['wf'] = intWf.tolist()
     if self.doPlot :
-      self.plot_wf(intWf) #self.plot_wf(samples,0,200)
+      print( 'ped\t', pedVal )
+      print( 'rms\t', pedRms )
+      print( 'max\t', maxVal )
+      self.plot_wf(samples) #self.plot_wf(samples,0,200)
     return resultsDict
 
   #analysis process applied to each "measurement"
   def processMeasurement(self,file_key, meas):
     print( "Measurement","\t",file_key)
+    #print( meas.attrs.keys() )
     #check for required attributes
     if 'awg_freq' not in meas.attrs :
       print("Measurement is missing required metadata: awg_freq")
@@ -86,6 +97,7 @@ class ATB_PROCESS_FILE(object):
     #ignore misconfigured runs
     if meas.attrs['run_type'] == 'sine' :
       return None
+    
     #get required attributes
     adc_freq = 40
     awg_freq = meas.attrs["awg_freq"]
@@ -93,6 +105,12 @@ class ATB_PROCESS_FILE(object):
     pulse_length = meas.attrs['pulse_length']
     n_offset = 1
     block_length = int(((awg_freq/np.abs(n_offset))/adc_freq)*pulse_length)
+    n_pulse_skips = 0
+    if meas.attrs['run_type'] == 'pulse' :
+      n_pulse_skips = 22
+      pulser_amp = float(meas.attrs['pulse_amplitude'])
+      self.pedRange = [0,100]
+      self.peakRange = [125,300]
 
     #if 'SAR_weights' not in mysubsubgroup.attrs :
       #print("Channel is missing required metadata: SAR_weights")
@@ -109,6 +127,7 @@ class ATB_PROCESS_FILE(object):
         #if 'SAR_weights' not in mysubsubgroup.attrs :
         #  print("Channel is missing required metadata: SAR_weights")
         #  continue
+        #sarWeights = mysubsubgroup.attrs['SAR_weights']
         #if 'samples' not in mysubsubgroup :
         #  print("Channel is missing required dataset: samples")
         #  continue
@@ -125,9 +144,10 @@ class ATB_PROCESS_FILE(object):
           sarWeights = self.SAR_weights_coluta2_ch1
         if colutaNum == 'coluta2' and channelNum == 'channel2' :
           sarWeights = self.SAR_weights_coluta2_ch2
+
         raw_data = mysubsubgroup['raw_data'] #dataset object
         samples = np.dot(raw_data, sarWeights)
-        resultsDict = self.processWaveform(samples,colutaNum,channelNum,pulser_amp,block_length, pulse_length)
+        resultsDict = self.processWaveform(samples,colutaNum,channelNum,pulser_amp,block_length, pulse_length,n_pulse_skips)
         if resultsDict != None :
           resultsList.append( resultsDict )
     return resultsList
@@ -148,7 +168,6 @@ class ATB_PROCESS_FILE(object):
       return None
     self.hdf5File = h5py.File(self.fileName, "r") #file object
     #check for required attributes
-    #print( "FILE Keys ", "\t", hdf5File.keys() )
     print( "FILE attr Keys ", "\t", self.hdf5File.attrs.keys() )
     runNo = self.getRunNo( self.hdf5File.filename )
     if runNo == None :
