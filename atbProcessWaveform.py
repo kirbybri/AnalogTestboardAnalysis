@@ -12,15 +12,16 @@ class ATB_PROCESS_WAVEFORM(object):
     self.fileName = fileName
     self.runResultsDict = None
     self.doInterlace = True
+    self.doRois = True
     self.doPlot = False
     self.saveWf = True
 
   # plot waveform samples
-  def plot_wf(self,wf_data,a=0,b=1000):
+  def plot_wf(self,wf_data,a=0,b=1000,title=""):
     plt.plot(wf_data[a:b],'.-')#plt.plot(wf_data,'.-')#
     plt.xlabel('samples', horizontalalignment='right', x=1.0)
     plt.ylabel('ADC counts')
-    plt.title("Example Waveform")
+    plt.title(title)
     plt.show() #plt.clf()
 
   #average the measurements
@@ -48,16 +49,23 @@ class ATB_PROCESS_WAVEFORM(object):
           maxMeas = []
           minMeas = []
           wfDict = {}
+          wfRoiDict = {}
           for measNum, meas in enumerate(ampInfo) :
             pedMeas.append(meas['ped'])
             rmsMeas.append(meas['rms'])
             maxMeas.append(meas['max'])
             minMeas.append(meas['min'])
-            if 'wf' in meas :
+            if 'wf' in meas:
               for sampNum, samp in enumerate(meas['wf']) :
                 if sampNum not in wfDict :
                   wfDict[sampNum] = []
                 wfDict[sampNum].append(samp)
+            if 'wf_roi' in meas:
+              if measNum not in wfRoiDict:
+                wfRoiDict[measNum] = []
+              for roiNum, roi in enumerate(meas['wf_roi']):
+                wfRoiDict[measNum].append( (roiNum,roi) )
+
           #average or combine results
           pedVal = np.mean(pedMeas)
           rmsVal = np.mean(rmsMeas)
@@ -75,8 +83,9 @@ class ATB_PROCESS_WAVEFORM(object):
           boardMeas[asic][ch][amp]['rms'] = rmsVal
           boardMeas[asic][ch][amp]['max'] = maxVal
           boardMeas[asic][ch][amp]['min'] = minVal
-          if len(avgWf) > 0 :
-            boardMeas[asic][ch][amp]['wf'] = avgWf
+          boardMeas[asic][ch][amp]['wf'] = avgWf
+          boardMeas[asic][ch][amp]['wf_roi'] = wfRoiDict
+          
     self.runResultsDict['results'] = boardMeas
 
   #reorganize measurement data by ASIC, ch and pulser DAC
@@ -102,6 +111,8 @@ class ATB_PROCESS_WAVEFORM(object):
         readoutDict = { 'ped' : result['ped'] , 'rms' : result['rms'], 'max' : result['max'], 'min' : result['min'] }
         if 'wf' in result :
           readoutDict['wf'] = result['wf']
+        if 'wf_roi' in result :
+          readoutDict['wf_roi'] = result['wf_roi']
         boardMeas[asic][ch][amp].append( readoutDict )
     self.runResultsDict['results'] = boardMeas
 
@@ -124,18 +135,33 @@ class ATB_PROCESS_WAVEFORM(object):
     minVal = int(np.amin(samples[58:85]))
 
     #do interlacing, get refined pulse measurements
+    intWf = None
     if self.doInterlace :
-      samples = samples[n_pulse_skips*pulse_length :]
-      samples = self.interlace(block_length, pulse_length, samples)
-      pedVal = np.mean(samples[0:100])
-      pedRms = np.std(samples[0:100])
-      maxVal = np.amax(samples[125:300])
-      minVal = np.amin(samples[490:950])  
+      intWf = samples[n_pulse_skips*pulse_length :]
+      intWf = self.interlace(block_length, pulse_length, intWf)
+      pedVal = np.mean(intWf[0:100])
+      pedRms = np.std(intWf[0:100])
+      maxVal = np.amax(intWf[125:300])
+      minVal = np.amin(intWf[490:950])
+      intWf = intWf.tolist()
+
+    #look at individual pulses
+    pulseWf = []
+    numPulses = 1
+    if pulse_length > 0 :
+      numPulses = int(len(samples)/float(pulse_length))
+    if self.doRois :
+      for num in range(1,numPulses-1,1):
+        numSkip = num*pulse_length
+        pulseWf.append( samples[0 + numSkip : pulse_length + numSkip] )
+        #self.plot_wf(samples[0 + numSkip : pulse_length + numSkip])
 
     #store results in dict
     resultsDict = {'coluta':colutaNum,'channel':channelNum,'pulser':pulserAmp,'ped':pedVal,'rms':pedRms,'max':maxVal,'min':minVal}
-    if self.saveWf :
-      resultsDict['wf'] = samples.tolist()
+    resultsDict['wf'] = intWf
+    resultsDict['wf_roi'] = pulseWf
+    #if self.saveWf :
+    #  resultsDict['wf'].append( samples.tolist() )
     if self.doPlot :
       print( 'colutaNum\t', colutaNum)
       print( 'channelNum\t', channelNum)
@@ -157,7 +183,7 @@ class ATB_PROCESS_WAVEFORM(object):
     block_length = int(((awg_freq/np.abs(n_offset))/adc_freq)*pulse_length)
     n_pulse_skips = 0
     if measAttrs['run_type'] == 'pulse' :
-      n_pulse_skips = 22
+      n_pulse_skips = 1
       pulser_amp = measAttrs['pulse_amplitude']
 
     #loop over measurement group members, process waveform data
@@ -170,8 +196,10 @@ class ATB_PROCESS_WAVEFORM(object):
   #process measurements
   def processMeasurements(self):
     if self.runResultsDict == None:
+      print("atbProcessWaveform: MISSING RESULTS")
       return None
     if "results" not in self.runResultsDict :
+      print("atbProcessWaveform: MISSING RESULTS")
       return None
     runMeas = self.runResultsDict['results']
     #loop over measurements

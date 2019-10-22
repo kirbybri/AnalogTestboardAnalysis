@@ -110,7 +110,6 @@ class ATB_PROCESS_FILE(object):
       return None
     self.hdf5File = h5py.File(self.fileName, "r") #file object
     #check for required attributes
-    print( "FILE attr Keys ", "\t", self.hdf5File.attrs.keys() )
     runNo = self.getRunNo( self.hdf5File.filename )
     if runNo == None :
       print("ERROR: couldn't get run number")
@@ -128,7 +127,7 @@ class ATB_PROCESS_FILE(object):
     #loop through measurements, store results in dict
     measResultsDict = {}
     for file_key in self.hdf5File.keys() :
-      print( "Measurement","\t",file_key)
+      #print( "Measurement","\t",file_key)
       meas = self.hdf5File[file_key]
       measAttrs = self.getReqAttrs(meas)
       if measAttrs == None :

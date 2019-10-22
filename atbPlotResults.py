@@ -2,6 +2,7 @@ import json
 import sys
 import numpy as np
 from math import *
+#import matplotlib.pyplot as plt
 import matplotlib.pyplot as plt
 
 #BEGIN ATB_PLOT_RESULTS CLASS
@@ -12,107 +13,93 @@ class ATB_PLOT_RESULTS(object):
     self.fileName = fileName
     self.boardName = boardName
     self.runResults = None
-
-  #reorganize measurement data by ASIC, ch and pulser DAC
-  def collect(self, runResults):
-    if 'results' not in runResults :
-      return None
-    results = runResults['results']
-
-    #loop over the measurements, organize by ASIC + ch, dac
-    boardMeas = {}
-    for results_key in results.keys() :
-      meas = results[results_key]
-      for result in meas :
-        asic = result['coluta']
-        ch = result['channel']
-        if ( asic, ch) not in boardMeas :
-          boardMeas[ ( asic, ch) ] = {}
-        amp = result['pulser']
-        if amp not in boardMeas[ ( asic, ch) ] :
-          boardMeas[ ( asic, ch) ][amp] = []
-        boardMeas[ ( asic, ch) ][amp].append( { 'ped' : result['ped'] , 'rms' : result['rms'], 'max' : result['max'] } )
-    return boardMeas
-
-  #combine the multiple measurements made with the same DAC into one value
-  def calcAvg(self, boardMeas):
-    #loop over the measurements, average 
-    boardResult = {}
-    for board_key in boardMeas.keys() :
-      chMeas = boardMeas[board_key]
-      if board_key not in boardResult:
-        boardResult[board_key] = {}
-
-      #loop over the pulser dacs
-      for ch_key in chMeas.keys() :
-        amp = ch_key
-        ampMeas = chMeas[amp]
-        pedMeas = []
-        rmsMeas = []
-        maxMeas = []
-        #loop over the repeated measurements made at the same DAC
-        for meas in ampMeas :
-          pedMeas.append(meas['ped'])
-          rmsMeas.append(meas['rms'])
-          maxMeas.append(meas['max'])
-        #average or combine results
-        pedVal = np.mean(pedMeas)
-        rmsVal = np.mean(rmsMeas)
-        maxVal = int( np.amax(maxMeas) )
-        #store average value in results dict
-        if amp not in boardResult[board_key] :
-          boardResult[board_key][amp] = {}
-        boardResult[board_key][amp]['ped'] = pedVal
-        boardResult[board_key][amp]['rms'] = rmsVal
-        boardResult[board_key][amp]['max'] = maxVal
-    return boardResult
+    self.plotResults = True
+    self.plotWithLimits = False
 
   #finally make some plots using info in results dict
-  def makePlots(self,boardResult, board_key, titleTextBase = "Example", figureName = "fig", low=0,high=60000):
-    if board_key not in boardResult:
+  def makePlots(self, asic, ch, titleTextBase = "Example", figureName = "fig", low=0,high=60000):
+    if 'results' not in self.runResults :
       return None
+    boardResult = self.runResults['results']
+    if asic not in boardResult:
+      return None
+    chResult = boardResult[asic]
+    if ch not in chResult:
+      return None
+    chInfo = chResult[ch]
 
-    chResult = boardResult[board_key]
     amps = []
     peds = []
     rmss = []
     maxs = []
     peaks = []
-    for amp in chResult.keys():
-      print(amp,"\t",chResult[amp])
-      amps.append(amp)
-      peds.append(chResult[amp]['ped'])
-      rmss.append(chResult[amp]['rms'])
-      maxs.append(chResult[amp]['max'])
-      peaks.append( chResult[amp]['max'] - chResult[amp]['ped'])
+    snrs = []
+    for amp in chInfo.keys():
+      ampInfo = chInfo[amp]
+      ampVal = float(amp)
+      amps.append(ampVal)
+      peds.append(ampInfo['ped'])
+      rmss.append(ampInfo['rms'])
+      maxs.append(ampInfo['max'])
+      peaks.append(ampInfo['max'] - ampInfo['ped'])
+      snr = 0
+      if ampInfo['rms'] > 0 :
+        snr = (ampInfo['max'] - ampInfo['ped'])/ampInfo['rms']
+      snrs.append(snr)
 
-    #fig = plt.figure()
-    #ax = fig.add_axes()
-    plt.plot(amps, peaks,'.')
-    plt.xlim(low,high)
-    plt.xlabel('Pulser DAC [DAC code]', horizontalalignment='right', x=1.0)
-    plt.ylabel('Pulse Height [ADC counts]')
-    plt.title(titleTextBase + " : Pulse Height count vs Pulser DAC")
-    #plt.savefig(figureName)
-    plt.show() #plt.clf()
+      #print( amp, "\t", ampInfo['ped'], "\t", ampInfo['max'] )
+      #peaks.append( chResult[amp]['max'])
+      #peaks.append( chResult[amp]['ped'])
+      #peaks.append( chResult[amp]['min']- chResult[amp]['ped'])
+
+    order = np.argsort(amps)
+    xs = np.array(amps)[order]
+    ys = np.array(peaks)[order]
+    #ys = np.array(snrs)[order]
+    #ys = np.array(rmss)[order]
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(xs, ys,'.')
+    if self.plotWithLimits :
+      ax.set_xlim(low,high)
+    #ax.set_xlabel('Pulser DAC [DAC code]', horizontalalignment='right', x=1.0)
+    ax.set_xlabel('Pulse Signal Amplitude [V]', horizontalalignment='right', x=1.0)
+    ax.set_ylabel('Pulse Height [ADC counts]', horizontalalignment='left', x=1.0)
+    #ax.set_ylabel('SNR', horizontalalignment='left', x=1.0)
+    #ax.set_ylabel('RMS', horizontalalignment='left', x=1.0)
+    #ax.set_ylabel('Pulse Peak Sample Value [ADC counts]', horizontalalignment='left', x=1.0)
+    #ax.set_title(titleTextBase + " : Pulse Peak vs Pulser DAC")
+    #ax.set_title(titleTextBase + " : Pulse Height count vs Pulser DAC")
+    ax.set_title(titleTextBase + " : Pulse Height vs Signal Amplitude")
+    #ax.set_title(titleTextBase + " : SNR vs Signal Amplitude")
+    #ax.set_title(titleTextBase + " : RMS vs Signal Amplitude")
+    fig.tight_layout()
+    plt.savefig(figureName + "_pulseHeightVsSig")
+    #plt.savefig(figureName + "_RMSVsSig")
+    if self.plotResults :
+      plt.show() #plt.clf()
+
     return None
-
-  def showPlots(self):
-    plt.show()
 
   def processResults(self):
     if self.runResults == None :
       return None
     fileName = self.fileName
     boardName= self.boardName
-    boardMeas = self.collect( self.runResults )
-    boardResult = self.calcAvg( boardMeas )
 
-    self.makePlots(boardResult,('coluta1', 'channel1'),boardName + " COLUTA 1 Low Gain",boardName+"_coluta1_lg",0,70000)
-    self.makePlots(boardResult,('coluta1', 'channel2'),boardName + " COLUTA 1 High Gain",boardName+"_coluta1_hg",0,5000)
-    self.makePlots(boardResult,('coluta2', 'channel1'),boardName + " COLUTA 2 High Gain",boardName+"_coluta2_hg",0,5000)
-    self.makePlots(boardResult,('coluta2', 'channel2'),boardName + " COLUTA 2 Low Gain",boardName+"_coluta2_lg",0,70000)
-
+  def makeAllPlots(self):
+    """
+    self.makePlots(('coluta1', 'channel1'),self.boardName + " COLUTA 1 Low Gain",self.boardName+'_coluta1_lg',0,100000)
+    self.makePlots(('coluta1', 'channel2'),self.boardName + " COLUTA 1 High Gain",self.boardName+'_coluta1_hg',0,5000)
+    self.makePlots(('coluta2', 'channel1'),self.boardName + " COLUTA 2 High Gain",self.boardName+'_coluta2_hg',0,5000)
+    self.makePlots(('coluta2', 'channel2'),self.boardName + " COLUTA 2 Low Gain",self.boardName+'_coluta2_lg',0,100000)
+    """
+    
+    self.makePlots('coluta1', 'channel1',self.boardName + " COLUTA 1 Ch 1 Low Gain",self.boardName+'_coluta1_ch1_lg',0,0.5)
+    self.makePlots('coluta1', 'channel2',self.boardName + " COLUTA 1 Ch 2 High Gain",self.boardName+'_coluta1_ch2_hg',0,0.5)
+    self.makePlots('coluta2', 'channel1',self.boardName + " COLUTA 2 Ch 1 High Gain",self.boardName+'_coluta2_ch1_hg',0,0.5)
+    self.makePlots('coluta2', 'channel2',self.boardName + " COLUTA 2 Ch 2 Low Gain",self.boardName+'_coluta2_ch2_lg',0,0.5)
+    
   def processFile(self):
     #open list of measurements, get all results
     with open(self.fileName) as json_data:
@@ -124,7 +111,7 @@ def main():
     return
 
   fileName = sys.argv[1]
-  boardName = "Board "
+  boardName = 'Board'
   if len(sys.argv) == 3 :
     boardName = sys.argv[2]
 
@@ -133,6 +120,7 @@ def main():
   atbPlotResults.boardName = boardName
   atbPlotResults.processFile()
   atbPlotResults.processResults()
+  atbPlotResults.makeAllPlots()
 
 #-------------------------------------------------------------------------
 if __name__ == "__main__":

@@ -17,19 +17,21 @@ class ATB_CHECK_RESULTS(object):
     self.plotWithLimits = True
 
   # plot waveform samples
-  def plot_wf(self,wf_data,a=0,b=1000):
+  def plot_wf(self,wf_data,a=0,b=1000,title = ""):
     plt.plot(wf_data[a:b],'.-')#plt.plot(wf_data,'.-')#
     plt.xlabel('samples', horizontalalignment='right', x=1.0)
     plt.ylabel('ADC counts')
-    plt.title("Example Waveform")
+    plt.title(title)
     plt.show() #plt.clf()
 
   def processResults(self):
     if self.runResults == None :
+      print("atbCheckResults: MISSING RESULTS")
       return None
     fileName = self.fileName
     boardName= self.boardName
     if 'results' not in self.runResults :
+      print("atbCheckResults: MISSING RESULTS")
       return None
     boardMeas =  self.runResults['results']
 
@@ -44,7 +46,14 @@ class ATB_CHECK_RESULTS(object):
           print("\t\tmax\t",boardMeas[asic][ch][amp]['max'] )
           print("\t\tmin\t",boardMeas[asic][ch][amp]['min'] )
           if 'wf' in boardMeas[asic][ch][amp] and self.plotResults :
-            self.plot_wf(boardMeas[asic][ch][amp]['wf'] )
+            self.plot_wf(boardMeas[asic][ch][amp]['wf'],title=str(asic) +" " + str(ch) + " " + str(amp) + "V")
+          if 'wf_roi' in boardMeas[asic][ch][amp] and self.plotResults :
+            print("\t\t# ROI ",len(boardMeas[asic][ch][amp]['wf_roi']) )
+            for measNum in boardMeas[asic][ch][amp]['wf_roi'] :
+              for roi in boardMeas[asic][ch][amp]['wf_roi'][measNum] :
+                self.plot_wf(roi[1],title=str(asic) +" " + str(ch) + " " + str(amp) + "V" + ", ROI " + str(roi[0]) )
+
+    return 
     
   def processFile(self):
     #open list of measurements, get all results
